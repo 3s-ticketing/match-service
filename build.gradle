@@ -1,0 +1,75 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.12'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'org.ticketing'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+ext {
+	set('springCloudVersion', "2025.0.1")
+}
+
+repositories {
+	mavenCentral()
+	maven {
+		name = "GitHubPackages"
+		url = uri("https://maven.pkg.github.com/3s-ticketing/common-module")
+		credentials {
+			username = System.getenv("GPR_USER")
+			password = System.getenv("GPR_TOKEN")
+		}
+	}
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+	}
+}
+
+dependencies {
+	// 공통 모듈 (org.ticketing:common:2.0-SNAPSHOT 로 publish 됨)
+	implementation 'org.ticketing:common:2.0-SNAPSHOT'
+
+	// 하단에 개별 서비스에 맞는 의존성 추가
+	// Querydsl APT
+	annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+	annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+	annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
+	implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
+
+	runtimeOnly 'org.postgresql:postgresql'
+
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	testCompileOnly 'org.projectlombok:lombok'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+
+	testRuntimeOnly 'com.h2database:h2'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+// QueryDSL Q클래스 생성 경로 설정
+def querydslDir = layout.buildDirectory.dir("querydsl").get().asFile
+sourceSets {
+	main.java.srcDirs += [querydslDir]
+}
+tasks.withType(JavaCompile) {
+	options.getGeneratedSourceOutputDirectory().set(file(querydslDir))
+}
+clean.doLast {
+	file(querydslDir).deleteDir()
+}
