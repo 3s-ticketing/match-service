@@ -1,0 +1,47 @@
+# ==========================================================
+# match-service 테스트 전용 설정
+# ----------------------------------------------------------
+# common-module 의 AppCtx 가 자동 등록되면서 JPAConfig / EventConfig
+# 가 OutboxRepository · InboxRepository 빈을 요구합니다.
+# JPAConfig 는 @ConditionalOnProperty(name = "spring.datasource.url")
+# 이므로 여기서 H2 URL 을 명시해야 @EnableJpaRepositories /
+# @EntityScan 이 작동하여 공통 모듈의 리포지토리가 등록됩니다.
+# ==========================================================
+spring:
+  application:
+    name: match-service
+  profiles:
+    active: test
+  # Config Server 없이 기동
+  config:
+    import: "optional:configserver:"
+  # H2 인메모리 DB 사용
+  datasource:
+    url: jdbc:h2:mem:match-service-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate.dialect: org.hibernate.dialect.H2Dialect
+      hibernate.show_sql: false
+  # Kafka 브로커가 없어도 컨텍스트는 올라오도록 리스너 자동기동을 끔
+  kafka:
+    bootstrap-servers: localhost:9092
+    listener:
+      auto-startup: false
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+
+# Eureka 서버 미구동 상태로 가정 → 클라이언트 비활성
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+# 로컬/테스트에서는 스케줄러 기동을 막아 Kafka/DB 에 불필요한 트래픽이 가지 않도록 설정 여지를 둠
+# (필요 시 각 @Scheduled 빈에 @ConditionalOnProperty 적용 가능)
