@@ -1,8 +1,8 @@
 spring:
   application:
-    name: matchserver
+    name: match-service
   profiles:
     active: local
   # Spring Cloud Config Server 미구동 상태에서도 실행 가능하도록 optional 로 import
   config:
-    import: optional:configserver:
+    import: "optional:configserver:"
