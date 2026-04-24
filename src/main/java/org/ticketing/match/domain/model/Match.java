@@ -24,6 +24,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.ticketing.common.domain.BaseEntity;
 import org.ticketing.match.domain.exception.InvalidMatchStatusTransitionException;
+import org.ticketing.match.domain.exception.MatchNotEditableException;
 import org.ticketing.match.domain.exception.MatchZonePolicyNotFoundException;
 
 @Getter
@@ -102,6 +103,9 @@ public class Match extends BaseEntity {
     }
 
     public void update(String name, OffsetDateTime matchDatetime, OffsetDateTime ticketOpenAt) {
+        if (!this.status.isEditable()) {
+            throw new MatchNotEditableException(this.status);
+        }
         this.name = name;
         this.matchDatetime = matchDatetime;
         this.ticketOpenAt = ticketOpenAt;
