@@ -8,25 +8,22 @@ public enum MatchStatus {
     /** ADMIN 승인 대기 → APPROVED, DRAFT 전이 가능 */
     PENDING_APPROVAL,
 
-    /** 승인 완료 → OPEN 전이 가능 */
+    /** 승인 완료 → ticket_open_at 도달 시 OPEN 전이 */
     APPROVED,
 
-    /** 예매 가능 (ticket_open_at 도달 후) → CLOSED, CANCELED 전이 가능 */
+    /** 예매 가능 (ticket_open_at 도달 후) → CLOSED 전이 가능 */
     OPEN,
 
     /** 예매 종료 */
-    CLOSED,
-
-    /** 경기 취소 (CLOSED 를 제외한 모든 상태에서 전이 가능) */
-    CANCELED;
+    CLOSED;
 
     public boolean canTransitionTo(MatchStatus target) {
         return switch (this) {
-            case DRAFT            -> target == PENDING_APPROVAL || target == CANCELED;
-            case PENDING_APPROVAL -> target == APPROVED || target == DRAFT || target == CANCELED;
-            case APPROVED         -> target == OPEN || target == CANCELED;
-            case OPEN             -> target == CLOSED || target == CANCELED;
-            case CLOSED, CANCELED -> false;
+            case DRAFT            -> target == PENDING_APPROVAL;
+            case PENDING_APPROVAL -> target == APPROVED || target == DRAFT;
+            case APPROVED         -> target == OPEN;
+            case OPEN             -> target == CLOSED;
+            case CLOSED           -> false;
         };
     }
 
