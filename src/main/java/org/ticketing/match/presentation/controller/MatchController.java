@@ -14,7 +14,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.ticketing.match.application.dto.command.DeleteMatchCommand;
+import org.ticketing.match.application.dto.command.RemoveMatchZonePolicyCommand;
+import org.ticketing.match.application.dto.query.FindMatchQuery;
 import org.ticketing.match.application.service.MatchApplicationService;
+import org.ticketing.match.infrastructure.security.SecurityContextProvider;
 import org.ticketing.match.presentation.dto.request.ChangeMatchStatusRequestDto;
 import org.ticketing.match.presentation.dto.request.CreateMatchRequestDto;
 import org.ticketing.match.presentation.dto.request.CreateMatchZonePolicyRequestDto;
@@ -29,6 +33,7 @@ import org.ticketing.match.presentation.dto.response.MatchZonePolicyResponseDto;
 public class MatchController {
 
     private final MatchApplicationService matchApplicationService;
+    private final SecurityContextProvider securityContextProvider;
 
     // ──────────────────────────────────────────
     // Match
@@ -37,14 +42,16 @@ public class MatchController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public MatchResponseDto createMatch(@RequestBody @Valid CreateMatchRequestDto request) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        return MatchResponseDto.from(
+                matchApplicationService.createMatch(request.toCommand())
+        );
     }
 
     @GetMapping("/{matchId}")
     public MatchResponseDto getMatch(@PathVariable UUID matchId) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        return MatchResponseDto.from(
+                matchApplicationService.findMatch(new FindMatchQuery(matchId))
+        );
     }
 
     @PutMapping("/{matchId}")
@@ -52,8 +59,9 @@ public class MatchController {
             @PathVariable UUID matchId,
             @RequestBody @Valid UpdateMatchRequestDto request
     ) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        return MatchResponseDto.from(
+                matchApplicationService.updateMatch(request.toCommand(matchId))
+        );
     }
 
     @PatchMapping("/{matchId}/status")
@@ -61,15 +69,16 @@ public class MatchController {
             @PathVariable UUID matchId,
             @RequestBody @Valid ChangeMatchStatusRequestDto request
     ) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        return MatchResponseDto.from(
+                matchApplicationService.changeStatus(request.toCommand(matchId))
+        );
     }
 
     @DeleteMapping("/{matchId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteMatch(@PathVariable UUID matchId) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        String deletedBy = securityContextProvider.getCurrentUsername();
+        matchApplicationService.deleteMatch(new DeleteMatchCommand(matchId, deletedBy));
     }
 
     // ──────────────────────────────────────────
@@ -82,8 +91,9 @@ public class MatchController {
             @PathVariable UUID matchId,
             @RequestBody @Valid CreateMatchZonePolicyRequestDto request
     ) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        return MatchZonePolicyResponseDto.from(
+                matchApplicationService.addZonePolicy(request.toCommand(matchId))
+        );
     }
 
     @PutMapping("/{matchId}/zone-policies/{policyId}")
@@ -92,8 +102,9 @@ public class MatchController {
             @PathVariable UUID policyId,
             @RequestBody @Valid UpdateMatchZonePolicyRequestDto request
     ) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        return MatchZonePolicyResponseDto.from(
+                matchApplicationService.updateZonePolicy(request.toCommand(matchId, policyId))
+        );
     }
 
     @DeleteMapping("/{matchId}/zone-policies/{policyId}")
@@ -102,7 +113,7 @@ public class MatchController {
             @PathVariable UUID matchId,
             @PathVariable UUID policyId
     ) {
-        // TODO: implement in CRUD branch
-        throw new UnsupportedOperationException("Not implemented yet");
+        String deletedBy = securityContextProvider.getCurrentUsername();
+        matchApplicationService.removeZonePolicy(new RemoveMatchZonePolicyCommand(matchId, policyId, deletedBy));
     }
 }
