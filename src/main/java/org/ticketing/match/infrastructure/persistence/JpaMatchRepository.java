@@ -7,5 +7,5 @@ import org.ticketing.match.domain.model.Match;
 
 public interface JpaMatchRepository extends JpaRepository<Match, UUID> {
 
-    Optional<Match> findByIdAndDeletedAtIsNull(UUID id);
+    Optional<Match> findActiveById(UUID id);
 }

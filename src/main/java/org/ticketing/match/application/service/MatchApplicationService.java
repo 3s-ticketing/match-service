@@ -69,14 +69,14 @@ public class MatchApplicationService {
     }
 
     public MatchResult findMatch(FindMatchQuery query) {
-        Match match = matchRepository.findByIdAndDeletedAtIsNull(query.matchId())
+        Match match = matchRepository.findActiveById(query.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(query.matchId()));
         return MatchResult.from(match);
     }
 
     @Transactional
     public MatchResult updateMatch(UpdateMatchCommand command) {
-        Match match = matchRepository.findByIdAndDeletedAtIsNull(command.matchId())
+        Match match = matchRepository.findActiveById(command.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(command.matchId()));
         match.update(command.name(), command.matchDatetime(), command.ticketOpenAt());
         return MatchResult.from(match);
@@ -84,7 +84,7 @@ public class MatchApplicationService {
 
     @Transactional
     public MatchResult changeStatus(ChangeMatchStatusCommand command) {
-        Match match = matchRepository.findByIdAndDeletedAtIsNull(command.matchId())
+        Match match = matchRepository.findActiveById(command.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(command.matchId()));
         match.changeStatus(command.targetStatus());
         return MatchResult.from(match);
@@ -92,7 +92,7 @@ public class MatchApplicationService {
 
     @Transactional
     public void deleteMatch(DeleteMatchCommand command) {
-        Match match = matchRepository.findByIdAndDeletedAtIsNull(command.matchId())
+        Match match = matchRepository.findActiveById(command.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(command.matchId()));
         match.delete(command.deletedBy());
     }
@@ -103,16 +103,18 @@ public class MatchApplicationService {
 
     @Transactional
     public MatchZonePolicyResult addZonePolicy(AddMatchZonePolicyCommand command) {
-        Match match = matchRepository.findByIdAndDeletedAtIsNull(command.matchId())
+        Match match = matchRepository.findActiveById(command.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(command.matchId()));
+        // 1차: 도메인 가드 (인메모리 중복 검사 → DuplicateMatchZonePolicyException)
         MatchZonePolicy policy = match.addZonePolicy(command.seatGradeId(), command.price());
-        matchRepository.save(match);
+        // 2차: saveAndFlush 로 즉시 플러시 → DB 유니크 제약 위반 시 트랜잭션 내에서 즉시 감지
+        matchRepository.saveAndFlush(match);
         return MatchZonePolicyResult.from(policy);
     }
 
     @Transactional
     public MatchZonePolicyResult updateZonePolicy(UpdateMatchZonePolicyCommand command) {
-        Match match = matchRepository.findByIdAndDeletedAtIsNull(command.matchId())
+        Match match = matchRepository.findActiveById(command.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(command.matchId()));
         match.updateZonePolicy(command.policyId(), command.price());
         return MatchZonePolicyResult.from(match.findZonePolicy(command.policyId()));
@@ -120,7 +122,7 @@ public class MatchApplicationService {
 
     @Transactional
     public void removeZonePolicy(RemoveMatchZonePolicyCommand command) {
-        Match match = matchRepository.findByIdAndDeletedAtIsNull(command.matchId())
+        Match match = matchRepository.findActiveById(command.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(command.matchId()));
         match.removeZonePolicy(command.policyId(), command.deletedBy());
     }
