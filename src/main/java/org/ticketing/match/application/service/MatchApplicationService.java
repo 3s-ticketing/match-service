@@ -1,5 +1,6 @@
 package org.ticketing.match.application.service;
 
+import java.time.OffsetDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,10 +15,13 @@ import org.ticketing.match.application.dto.command.UpdateMatchZonePolicyCommand;
 import org.ticketing.match.application.dto.query.FindMatchQuery;
 import org.ticketing.match.application.dto.result.MatchResult;
 import org.ticketing.match.application.dto.result.MatchZonePolicyResult;
+import org.ticketing.match.domain.event.MatchEventPublisher;
+import org.ticketing.match.domain.event.payload.MatchCanceledEvent;
 import org.ticketing.match.domain.exception.ClubNotFoundException;
 import org.ticketing.match.domain.exception.MatchNotFoundException;
 import org.ticketing.match.domain.exception.StadiumNotFoundException;
 import org.ticketing.match.domain.model.Match;
+import org.ticketing.match.domain.model.MatchStatus;
 import org.ticketing.match.domain.model.MatchZonePolicy;
 import org.ticketing.match.domain.repository.MatchRepository;
 import org.ticketing.match.domain.service.ClubProvider;
@@ -29,6 +33,7 @@ import org.ticketing.match.domain.service.StadiumProvider;
 public class MatchApplicationService {
 
     private final MatchRepository matchRepository;
+    private final MatchEventPublisher matchEventPublisher;
     private final ClubProvider clubProvider;
     private final StadiumProvider stadiumProvider;
 
@@ -64,7 +69,6 @@ public class MatchApplicationService {
                 command.matchDatetime(),
                 command.ticketOpenAt()
         );
-
         return MatchResult.from(matchRepository.save(match));
     }
 
@@ -82,11 +86,27 @@ public class MatchApplicationService {
         return MatchResult.from(match);
     }
 
+    /**
+     * 상태 변경 처리.
+     * CANCELED 전이 시 예매·결제 서비스가 소비할 MatchCanceledEvent 를 발행한다.
+     * Kafka 발행이 트랜잭션 커밋 전에 실행되므로, Kafka 실패 시 트랜잭션이 롤백된다.
+     * 프로덕션에서는 Outbox 패턴으로 교체해 커밋 후 발행을 보장해야 한다.
+     */
     @Transactional
     public MatchResult changeStatus(ChangeMatchStatusCommand command) {
         Match match = matchRepository.findActiveById(command.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(command.matchId()));
+
+        MatchStatus previousStatus = match.getStatus();
         match.changeStatus(command.targetStatus());
+
+        if (command.targetStatus() == MatchStatus.CANCELED) {
+            matchEventPublisher.publishMatchCanceled(new MatchCanceledEvent(
+                    match.getId(),
+                    OffsetDateTime.now()
+            ));
+        }
+
         return MatchResult.from(match);
     }
 
