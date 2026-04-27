@@ -1,7 +1,6 @@
 package org.ticketing.match.application.service;
 
 import java.time.OffsetDateTime;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -98,7 +97,11 @@ public class MatchApplicationService {
      * 3. OutboxEventListener.publish() (@TransactionalEventListener AFTER_COMMIT) → Kafka 발행
      * 4. 실패 시 OutboxRelayScheduler 가 PENDING/FAILED 레코드 재시도, 3회 초과 시 DLT 격리
      *
-     * <p>correlationId 는 UUID 로 생성해 중복 이벤트를 방지한다.
+     * <p>correlationId 는 "match:{matchId}:canceled" 형태의 결정적 값을 사용한다.
+     * UUID.randomUUID() 를 쓰면 동일 경기 취소 요청이 두 번 들어올 때 서로 다른
+     * correlationId 로 인식되어 Outbox 중복 저장 방지가 무력화된다.
+     * 결정적 correlationId 를 사용하면 같은 경기의 두 번째 취소 이벤트는
+     * OutboxEventListener 의 exists() 체크에서 차단된다.
      */
     @Transactional
     public MatchResult changeStatus(ChangeMatchStatusCommand command) {
@@ -109,7 +112,7 @@ public class MatchApplicationService {
 
         if (command.targetStatus() == MatchStatus.CANCELED) {
             Events.trigger(
-                    UUID.randomUUID().toString(),           // correlationId — 멱등성 키
+                    "match:" + match.getId() + ":canceled", // correlationId — Outbox 중복 저장 방지 키
                     DOMAIN_TYPE,                            // domainType
                     match.getId().toString(),               // domainId (Kafka message key)
                     TOPIC_MATCH_CANCELED,                   // eventType = Kafka topic
