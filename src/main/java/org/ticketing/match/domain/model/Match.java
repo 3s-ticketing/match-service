@@ -23,7 +23,9 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.ticketing.common.domain.BaseEntity;
+import org.ticketing.match.domain.exception.DuplicateMatchZonePolicyException;
 import org.ticketing.match.domain.exception.InvalidMatchStatusTransitionException;
+import org.ticketing.match.domain.exception.MatchNotEditableException;
 import org.ticketing.match.domain.exception.MatchZonePolicyNotFoundException;
 
 @Getter
@@ -102,6 +104,9 @@ public class Match extends BaseEntity {
     }
 
     public void update(String name, OffsetDateTime matchDatetime, OffsetDateTime ticketOpenAt) {
+        if (!this.status.isEditable()) {
+            throw new MatchNotEditableException(this.status);
+        }
         this.name = name;
         this.matchDatetime = matchDatetime;
         this.ticketOpenAt = ticketOpenAt;
@@ -115,9 +120,17 @@ public class Match extends BaseEntity {
     // ZonePolicy 관리 (어그리게이트 루트를 통한 접근)
     // ──────────────────────────────────────────
 
+    // 동일 seatGradeId 정책은 삭제 여부와 무관하게 재등록 불가 (기록 보존 정책)
     public MatchZonePolicy addZonePolicy(UUID seatGradeId, Long price) {
-        MatchZonePolicy policy = MatchZonePolicy.create(this, seatGradeId, price);
-        this.zonePolicies.add(policy);
+
+        boolean exists = zonePolicies.stream()
+                .anyMatch(p -> p.getSeatGradeId().equals(seatGradeId));
+        if (exists) {
+            throw new DuplicateMatchZonePolicyException(id, seatGradeId);
+        }
+        MatchZonePolicy policy =
+                MatchZonePolicy.create(this, seatGradeId, price);
+        zonePolicies.add(policy);
         return policy;
     }
 
