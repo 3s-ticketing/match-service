@@ -1,0 +1,45 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:matchdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop   # H2 사용 시 스키마 자동 생성
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+    show-sql: true
+
+  h2:
+    console:
+      enabled: true           # http://localhost:8081/h2-console 에서 인메모리 DB 확인 가능
+
+  flyway:
+    enabled: false            # PostgreSQL 전용 DDL이 H2에서 오류를 유발하므로 비활성화
+
+  kafka:
+    bootstrap-servers: localhost:9092   # KafkaTemplate은 실제 발행 시에만 연결하므로 기동 시 오류 없음
+
+  # Config Server 미기동 상태에서도 실행 가능 (application.yaml 의 optional 설정과 동일)
+  cloud:
+    config:
+      enabled: false
+
+eureka:
+  client:
+    enabled: false            # 단위 테스트 시 Eureka 불필요
+    register-with-eureka: false
+    fetch-registry: false
+
+# 로컬 Kafka 토픽 설정 (파티션/레플리카 최소값)
+kafka:
+  topic:
+    partitions: 1
+    replicas: 1
