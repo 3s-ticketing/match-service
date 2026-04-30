@@ -65,7 +65,7 @@ public class MatchWriteService {
      * 상태 변경 + 이벤트 발행.
      *
      * <ul>
-     *   <li>APPROVED → {@code match.approved} : queue-service 가 소비하여 ticketOpenAt 캐시 초기화</li>
+     *   <li>APPROVED → {@code match.approved} : reservation-service 가 소비하여 ticketOpenAt 캐시 초기화</li>
      *   <li>CANCELED → {@code match.canceled} : reservation-service 가 소비하여 진행 중 예매 취소</li>
      * </ul>
      */

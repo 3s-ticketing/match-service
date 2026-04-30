@@ -15,10 +15,12 @@ import org.ticketing.match.application.dto.result.MatchResult;
 import org.ticketing.match.application.dto.result.MatchZonePolicyResult;
 import org.ticketing.match.domain.exception.ClubNotFoundException;
 import org.ticketing.match.domain.exception.MatchNotFoundException;
+import org.ticketing.match.domain.exception.SeatGradeNotFoundException;
 import org.ticketing.match.domain.exception.StadiumNotFoundException;
 import org.ticketing.match.domain.model.Match;
 import org.ticketing.match.domain.repository.MatchRepository;
 import org.ticketing.match.domain.service.ClubProvider;
+import org.ticketing.match.domain.service.SeatGradeProvider;
 import org.ticketing.match.domain.service.StadiumProvider;
 
 /**
@@ -51,6 +53,7 @@ public class MatchApplicationService {
     private final MatchWriteService matchWriteService;
     private final ClubProvider clubProvider;
     private final StadiumProvider stadiumProvider;
+    private final SeatGradeProvider seatGradeProvider;
 
     // ──────────────────────────────────────────
     // Match 생성 — Feign 검증 후 커맨드 서비스에 위임
@@ -121,8 +124,17 @@ public class MatchApplicationService {
         matchWriteService.delete(command);
     }
 
-    @Transactional
+    /**
+     * ZonePolicy 추가.
+     *
+     * <p>{@code createMatch} 와 동일하게 메서드 레벨 {@code @Transactional} 을 두지 않는다.
+     * SeatGrade 존재 검증을 Feign 으로 수행한 뒤 {@link MatchWriteService#addZonePolicy} 에
+     * 쓰기를 위임하므로, Feign 호출 동안 DB 커넥션을 점유하지 않는다.
+     */
     public MatchZonePolicyResult addZonePolicy(AddMatchZonePolicyCommand command) {
+        if (!seatGradeProvider.existsById(command.seatGradeId())) {
+            throw new SeatGradeNotFoundException(command.seatGradeId());
+        }
         return matchWriteService.addZonePolicy(command);
     }
 
