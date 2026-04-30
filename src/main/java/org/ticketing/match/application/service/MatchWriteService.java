@@ -1,5 +1,7 @@
 package org.ticketing.match.application.service;
 
+import java.time.OffsetDateTime;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,8 +13,12 @@ import org.ticketing.match.application.dto.command.UpdateMatchCommand;
 import org.ticketing.match.application.dto.command.UpdateMatchZonePolicyCommand;
 import org.ticketing.match.application.dto.result.MatchResult;
 import org.ticketing.match.application.dto.result.MatchZonePolicyResult;
+import org.ticketing.match.domain.event.MatchEventPublisher;
+import org.ticketing.match.domain.event.payload.MatchApprovedEvent;
+import org.ticketing.match.domain.event.payload.MatchCanceledEvent;
 import org.ticketing.match.domain.exception.MatchNotFoundException;
 import org.ticketing.match.domain.model.Match;
+import org.ticketing.match.domain.model.MatchStatus;
 import org.ticketing.match.domain.model.MatchZonePolicy;
 import org.ticketing.match.domain.repository.MatchRepository;
 
@@ -20,12 +26,14 @@ import org.ticketing.match.domain.repository.MatchRepository;
  * Match 어그리게이트 쓰기 전담 서비스.
  *
  * <p>모든 메서드는 {@code @Transactional} 아래에서 실행되므로
- * 미래에 Outbox 저장, ZonePolicy 추가 등 쓰기가 여러 건이 생겨도
- * 단일 트랜잭션으로 원자성이 보장된다.
+ * 도메인 변경 + Outbox 저장이 단일 트랜잭션으로 원자적으로 처리된다.
  *
- * <p>{@link MatchApplicationService} 에서 Feign 검증을 마친 뒤
- * 이 서비스로 위임하면, DB 커넥션을 잡은 채 외부 HTTP 를 기다리는
- * 문제(커넥션 풀 고갈)가 해소된다.
+ * <p>이벤트 발행 흐름:
+ * <ol>
+ *   <li>{@link MatchEventPublisher} → {@code Events.trigger()} 호출</li>
+ *   <li>{@code OutboxEventListener.recordOutbox()} 가 동일 트랜잭션에서 Outbox 레코드 저장</li>
+ *   <li>트랜잭션 커밋 후 {@code OutboxEventListener.publish()} 가 Kafka 로 전송</li>
+ * </ol>
  */
 @Service
 @Transactional
@@ -33,19 +41,12 @@ import org.ticketing.match.domain.repository.MatchRepository;
 public class MatchWriteService {
 
     private final MatchRepository matchRepository;
+    private final MatchEventPublisher matchEventPublisher;
 
     // ──────────────────────────────────────────
     // Match 생성
     // ──────────────────────────────────────────
 
-    /**
-     * Match 도메인 객체를 받아 저장한다.
-     *
-     * <p>외부 서비스 검증(Feign)은 호출자({@link MatchApplicationService#createMatch})가
-     * 트랜잭션 없이 먼저 수행하며, 이 메서드는 순수하게 영속화만 담당한다.
-     * 추후 Outbox 이벤트 저장, 초기 ZonePolicy 생성 등이 추가되어도
-     * 같은 트랜잭션 안에서 원자적으로 처리된다.
-     */
     public MatchResult create(Match match) {
         return MatchResult.from(matchRepository.save(match));
     }
@@ -60,9 +61,28 @@ public class MatchWriteService {
         return MatchResult.from(match);
     }
 
+    /**
+     * 상태 변경 + 이벤트 발행.
+     *
+     * <ul>
+     *   <li>APPROVED → {@code match.approved} : queue-service 가 소비하여 ticketOpenAt 캐시 초기화</li>
+     *   <li>CANCELED → {@code match.canceled} : reservation-service 가 소비하여 진행 중 예매 취소</li>
+     * </ul>
+     */
     public MatchResult changeStatus(ChangeMatchStatusCommand command) {
         Match match = getActive(command.matchId());
         match.changeStatus(command.targetStatus());
+
+        if (command.targetStatus() == MatchStatus.APPROVED) {
+            matchEventPublisher.publishMatchApproved(
+                    new MatchApprovedEvent(match.getId(), match.getTicketOpenAt())
+            );
+        } else if (command.targetStatus() == MatchStatus.CANCELED) {
+            matchEventPublisher.publishMatchCanceled(
+                    new MatchCanceledEvent(match.getId(), OffsetDateTime.now())
+            );
+        }
+
         return MatchResult.from(match);
     }
 
@@ -77,9 +97,7 @@ public class MatchWriteService {
 
     public MatchZonePolicyResult addZonePolicy(AddMatchZonePolicyCommand command) {
         Match match = getActive(command.matchId());
-        // 1차: 도메인 가드 (인메모리 중복 검사 → DuplicateMatchZonePolicyException)
         MatchZonePolicy policy = match.addZonePolicy(command.seatGradeId(), command.price());
-        // 2차: saveAndFlush 로 즉시 플러시 → DB 유니크 제약 위반 시 트랜잭션 안에서 즉시 감지
         matchRepository.saveAndFlush(match);
         return MatchZonePolicyResult.from(policy);
     }
@@ -99,7 +117,7 @@ public class MatchWriteService {
     // 내부 헬퍼
     // ──────────────────────────────────────────
 
-    private Match getActive(java.util.UUID matchId) {
+    private Match getActive(UUID matchId) {
         return matchRepository.findActiveById(matchId)
                 .orElseThrow(() -> new MatchNotFoundException(matchId));
     }

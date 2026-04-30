@@ -24,20 +24,23 @@ import org.ticketing.match.domain.service.StadiumProvider;
 /**
  * Match 어그리게이트 오케스트레이션 서비스.
  *
- * <h3>createMatch 설계 의도</h3>
- * <p>외부 서비스(Feign) 검증을 트랜잭션 없이 수행한 뒤,
- * 실제 DB 쓰기는 {@link MatchWriteService}에 위임한다.
+ * <h3>두 빈(Two-Bean) 패턴</h3>
+ * <p>Feign 호출이 필요한 메서드({@link #createMatch})는 트랜잭션 없이 검증을 수행한 뒤
+ * {@link MatchWriteService}에 쓰기를 위임한다.
  *
  * <ul>
  *   <li>Feign 호출 동안 DB 커넥션을 잡지 않으므로 커넥션 풀 고갈 위험 없음.</li>
- *   <li>쓰기가 여러 건(Outbox, ZonePolicy 등)으로 늘어나도
- *       {@code MatchCommandService} 안에서 단일 {@code @Transactional}로 원자성 보장.</li>
- *   <li>{@code NOT_SUPPORTED} 를 쓰지 않으므로, 실수로 외부 트랜잭션에 참여하거나
- *       원자성이 깨지는 위험이 없다.</li>
+ *   <li>도메인 변경 + Outbox 저장이 {@link MatchWriteService} 의 단일 {@code @Transactional} 로 원자적으로 처리됨.</li>
  * </ul>
  *
- * <h3>나머지 쓰기 메서드</h3>
- * <p>Feign 호출이 없는 update/delete/zonePolicy 는 {@link MatchWriteService}에 직접 위임한다.
+ * <h3>이벤트 발행</h3>
+ * <p>모든 Kafka 이벤트는 {@link MatchWriteService} 내부에서 {@code MatchEventPublisher} 를 통해 발행된다.
+ * {@code OutboxEventListener} 가 동일 트랜잭션에서 Outbox 를 저장하고,
+ * 커밋 후 Kafka 전송까지 처리하므로 이 클래스에서는 이벤트를 직접 다루지 않는다.
+ *
+ * <h3>APPROVED 분기 (향후 확장)</h3>
+ * <p>MatchSeatAvailability 초기화 구현 시 이 클래스의 {@link #changeStatus} 에
+ * Feign 호출 분기가 추가될 예정이다.
  */
 @Service
 @Transactional(readOnly = true)

@@ -23,21 +23,15 @@ public class KafkaTopicConfig {
     @Value("${kafka.topic.replicas:1}")
     private short replicas;
 
-    @Value("${topics.match.created:match.created}")
-    private String matchCreatedTopic;
+    @Value("${topics.match.approved:match.approved}")
+    private String matchApprovedTopic;
 
     @Value("${topics.match.canceled:match.canceled}")
     private String matchCanceledTopic;
 
-    @Value("${topics.match.status-changed:match.status-changed}")
-    private String matchStatusChangedTopic;
-
-    @Value("${topics.match.zone-policy.created:match.zone-policy.created}")
-    private String matchZonePolicyCreatedTopic;
-
     @Bean
-    public NewTopic matchCreatedTopic() {
-        return TopicBuilder.name(matchCreatedTopic)
+    public NewTopic matchApprovedTopic() {
+        return TopicBuilder.name(matchApprovedTopic)
                 .partitions(partitions)
                 .replicas(replicas)
                 .build();
@@ -46,22 +40,6 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic matchCanceledTopic() {
         return TopicBuilder.name(matchCanceledTopic)
-                .partitions(partitions)
-                .replicas(replicas)
-                .build();
-    }
-
-    @Bean
-    public NewTopic matchStatusChangedTopic() {
-        return TopicBuilder.name(matchStatusChangedTopic)
-                .partitions(partitions)
-                .replicas(replicas)
-                .build();
-    }
-
-    @Bean
-    public NewTopic matchZonePolicyCreatedTopic() {
-        return TopicBuilder.name(matchZonePolicyCreatedTopic)
                 .partitions(partitions)
                 .replicas(replicas)
                 .build();
