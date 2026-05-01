@@ -5,7 +5,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
-@FeignClient(name = "stadium-service", contextId = "seatGradeClient")
+@FeignClient(name = "seat-service", contextId = "seatGradeClient")
 public interface SeatGradeClient {
 
     @GetMapping("/api/seat-grades/{seatGradeId}/exists")
