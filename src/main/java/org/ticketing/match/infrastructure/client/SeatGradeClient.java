@@ -8,6 +8,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 @FeignClient(name = "seat-service", contextId = "seatGradeClient")
 public interface SeatGradeClient {
 
-    @GetMapping("/api/seat-grades/{seatGradeId}/exists")
+    @GetMapping("/internal/seat-grades/{seatGradeId}/exists")
     boolean existsById(@PathVariable UUID seatGradeId);
 }

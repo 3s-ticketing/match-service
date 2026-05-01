@@ -8,6 +8,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 @FeignClient(name = "club-service")
 public interface ClubClient {
 
-    @GetMapping("/api/clubs/{clubId}/exists")
+    @GetMapping("/internal/clubs/{clubId}/exists")
     boolean existsById(@PathVariable UUID clubId);
 }
