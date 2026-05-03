@@ -54,6 +54,10 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 	runtimeOnly 'com.h2database:h2'     // local 프로파일 인메모리 DB
 
+	//flyway (Spring Boot 3.5 + Postgres 16: postgresql 모듈 분리됨)
+	implementation 'org.flywaydb:flyway-core'
+	runtimeOnly    'org.flywaydb:flyway-database-postgresql'
+
 	testRuntimeOnly 'com.h2database:h2'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
