@@ -1,46 +1,6 @@
-server:
-  port: 8081
-
 spring:
   application:
     name: match-service
 
-  # Spring Cloud Config Server 미구동 상태에서도 실행 가능하도록 optional 로 import
   config:
-    import: "optional:configserver:"
-
-  cloud:
-    config:
-      enabled: false
-
-  datasource:
-    # currentSchema=match: 엔티티에 schema 미명시이므로 JDBC search_path 로 강제.
-    url: jdbc:postgresql://localhost:${POSTGRES_PORT:15432}/${POSTGRES_DB:ticketing}?currentSchema=match
-    username: ${POSTGRES_USER:ticketing}
-    password: ${POSTGRES_PASSWORD:ticketing1234}
-    driver-class-name: org.postgresql.Driver
-
-  jpa:
-    hibernate:
-      ddl-auto: none          # Flyway 가 스키마 단일 소유자. Hibernate 는 검증 안 함.
-    show-sql: true
-
-  flyway:
-    enabled: true
-    schemas: match
-    locations: classpath:db/migration
-    baseline-on-migrate: true
-
-  kafka:
-    bootstrap-servers: localhost:${KAFKA_PORT:19092}
-
-# Eureka 비활성화 (단독 기동 시)
-eureka:
-  client:
-    enabled: false
-
-# Kafka 토픽 설정 (파티션/레플리카 최소값)
-kafka:
-  topic:
-    partitions: 1
-    replicas: 1
+    import: optional:configserver:http://localhost:10002
