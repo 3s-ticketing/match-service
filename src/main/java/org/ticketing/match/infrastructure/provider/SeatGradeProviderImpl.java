@@ -19,6 +19,7 @@ public class SeatGradeProviderImpl implements SeatGradeProvider {
 
     @Override
     public long countBySeatGradeId(UUID seatGradeId) {
-        return seatGradeClient.countBySeatGradeId(seatGradeId);
+        Long count = seatGradeClient.countBySeatGradeId(seatGradeId).data();
+        return count != null ? count : 0L;
     }
 }

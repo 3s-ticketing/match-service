@@ -11,4 +11,7 @@ public interface SeatGradeClient {
 
     @GetMapping("/internal/seat-grades/{seatGradeId}/exists")
     CommonResponse<Boolean> existsById(@PathVariable("seatGradeId") UUID seatGradeId);
+
+    @GetMapping("/internal/seat-grades/{seatGradeId}/count")
+    CommonResponse<Long> countBySeatGradeId(@PathVariable("seatGradeId") UUID seatGradeId);
 }
