@@ -1,5 +1,6 @@
 package org.ticketing.match.infrastructure.event;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +19,14 @@ import org.ticketing.match.infrastructure.event.payload.ReservationSeatReservedE
  *   <li>{@code reservation.seat.reserved} → {@link SeatAvailabilityRepository#decrement}</li>
  *   <li>{@code reservation.seat.released} → {@link SeatAvailabilityRepository#increment}</li>
  * </ul>
+ *
+ * <h3>오류 처리</h3>
+ * <p>예외를 catch 하지 않고 전파하여 {@link KafkaConsumerConfig} 의 {@code DefaultErrorHandler} 가
+ * 처리하도록 한다.
+ * <ul>
+ *   <li>{@link JsonProcessingException}: non-retryable — 즉시 {@code {topic}.DLT} 로 이동</li>
+ *   <li>Redis 오류 등 런타임 예외: 1초 간격 3회 재시도 후 DLT 로 이동</li>
+ * </ul>
  */
 @Slf4j
 @Component
@@ -32,15 +41,11 @@ public class ReservationSeatEventConsumer {
             groupId = "${spring.kafka.consumer.group-id:match-service}",
             containerFactory = "kafkaListenerContainerFactory"
     )
-    public void onSeatReserved(ConsumerRecord<String, String> record) {
-        try {
-            ReservationSeatReservedEvent event =
-                    objectMapper.readValue(record.value(), ReservationSeatReservedEvent.class);
-            log.debug("[SeatEvent] reserved matchId={}, seatGradeId={}", event.matchId(), event.seatGradeId());
-            seatAvailabilityRepository.decrement(event.matchId(), event.seatGradeId());
-        } catch (Exception e) {
-            log.error("[SeatEvent] failed to process reserved event: {}", record.value(), e);
-        }
+    public void onSeatReserved(ConsumerRecord<String, String> record) throws JsonProcessingException {
+        ReservationSeatReservedEvent event =
+                objectMapper.readValue(record.value(), ReservationSeatReservedEvent.class);
+        log.debug("[SeatEvent] reserved matchId={}, seatGradeId={}", event.matchId(), event.seatGradeId());
+        seatAvailabilityRepository.decrement(event.matchId(), event.seatGradeId());
     }
 
     @KafkaListener(
@@ -48,14 +53,11 @@ public class ReservationSeatEventConsumer {
             groupId = "${spring.kafka.consumer.group-id:match-service}",
             containerFactory = "kafkaListenerContainerFactory"
     )
-    public void onSeatReleased(ConsumerRecord<String, String> record) {
-        try {
-            ReservationSeatReleasedEvent event =
-                    objectMapper.readValue(record.value(), ReservationSeatReleasedEvent.class);
-            log.debug("[SeatEvent] released matchId={}, seatGradeId={}, reason={}", event.matchId(), event.seatGradeId(), event.reason());
-            seatAvailabilityRepository.increment(event.matchId(), event.seatGradeId());
-        } catch (Exception e) {
-            log.error("[SeatEvent] failed to process released event: {}", record.value(), e);
-        }
+    public void onSeatReleased(ConsumerRecord<String, String> record) throws JsonProcessingException {
+        ReservationSeatReleasedEvent event =
+                objectMapper.readValue(record.value(), ReservationSeatReleasedEvent.class);
+        log.debug("[SeatEvent] released matchId={}, seatGradeId={}, reason={}",
+                event.matchId(), event.seatGradeId(), event.reason());
+        seatAvailabilityRepository.increment(event.matchId(), event.seatGradeId());
     }
 }
