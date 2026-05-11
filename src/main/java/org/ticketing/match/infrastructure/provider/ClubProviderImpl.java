@@ -14,6 +14,6 @@ public class ClubProviderImpl implements ClubProvider {
 
     @Override
     public boolean existsById(UUID clubId) {
-        return clubClient.existsById(clubId);
+        return Boolean.TRUE.equals(clubClient.existsClub(clubId).data());
     }
 }
