@@ -121,7 +121,7 @@ public class Match extends BaseEntity {
     // ──────────────────────────────────────────
 
     // 동일 seatGradeId 정책은 삭제 여부와 무관하게 재등록 불가 (기록 보존 정책)
-    public MatchZonePolicy addZonePolicy(UUID seatGradeId, Long price) {
+    public MatchZonePolicy addZonePolicy(UUID seatGradeId, Long price, Long totalSeatCount) {
 
         boolean exists = zonePolicies.stream()
                 .anyMatch(p -> p.getSeatGradeId().equals(seatGradeId));
@@ -129,7 +129,7 @@ public class Match extends BaseEntity {
             throw new DuplicateMatchZonePolicyException(id, seatGradeId);
         }
         MatchZonePolicy policy =
-                MatchZonePolicy.create(this, seatGradeId, price);
+                MatchZonePolicy.create(this, seatGradeId, price, totalSeatCount);
         zonePolicies.add(policy);
         return policy;
     }

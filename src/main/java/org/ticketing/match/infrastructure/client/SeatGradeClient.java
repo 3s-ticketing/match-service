@@ -10,4 +10,7 @@ public interface SeatGradeClient {
 
     @GetMapping("/internal/seat-grades/{seatGradeId}/exists")
     boolean existsById(@PathVariable UUID seatGradeId);
+
+    @GetMapping("/internal/seat-grades/{seatGradeId}/count")
+    long countBySeatGradeId(@PathVariable UUID seatGradeId);
 }

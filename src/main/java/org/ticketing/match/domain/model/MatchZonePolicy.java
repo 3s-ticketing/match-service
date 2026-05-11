@@ -43,12 +43,17 @@ public class MatchZonePolicy extends BaseEntity {
     @Column(name = "is_open", nullable = false)
     private Boolean isOpen;
 
-    static MatchZonePolicy create(Match match, UUID seatGradeId, Long price) {
+    /** seat-service 에서 조회한 해당 구역 총 좌석 수. Redis 잔여 좌석 초기화 소스로 사용. */
+    @Column(name = "total_seat_count", nullable = false)
+    private Long totalSeatCount;
+
+    static MatchZonePolicy create(Match match, UUID seatGradeId, Long price, Long totalSeatCount) {
         MatchZonePolicy policy = new MatchZonePolicy();
         policy.match = match;
         policy.seatGradeId = seatGradeId;
         policy.price = price;
         policy.isOpen = false;
+        policy.totalSeatCount = totalSeatCount;
         return policy;
     }
 

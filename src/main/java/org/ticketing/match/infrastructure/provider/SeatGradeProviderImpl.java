@@ -16,4 +16,9 @@ public class SeatGradeProviderImpl implements SeatGradeProvider {
     public boolean existsById(UUID seatGradeId) {
         return seatGradeClient.existsById(seatGradeId);
     }
+
+    @Override
+    public long countBySeatGradeId(UUID seatGradeId) {
+        return seatGradeClient.countBySeatGradeId(seatGradeId);
+    }
 }

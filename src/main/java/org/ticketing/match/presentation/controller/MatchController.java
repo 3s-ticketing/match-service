@@ -26,6 +26,7 @@ import org.ticketing.match.presentation.dto.request.UpdateMatchRequestDto;
 import org.ticketing.match.presentation.dto.request.UpdateMatchZonePolicyRequestDto;
 import org.ticketing.match.presentation.dto.response.MatchResponseDto;
 import org.ticketing.match.presentation.dto.response.MatchZonePolicyResponseDto;
+import org.ticketing.match.presentation.dto.response.RemainingSeatsResponseDto;
 
 @RestController
 @RequestMapping("/api/matches")
@@ -51,6 +52,13 @@ public class MatchController {
     public MatchResponseDto getMatch(@PathVariable UUID matchId) {
         return MatchResponseDto.from(
                 matchApplicationService.findMatch(new FindMatchQuery(matchId))
+        );
+    }
+
+    @GetMapping("/{matchId}/remaining-seats")
+    public RemainingSeatsResponseDto getRemainingSeats(@PathVariable UUID matchId) {
+        return RemainingSeatsResponseDto.from(
+                matchApplicationService.getRemainingSeats(matchId)
         );
     }
 
