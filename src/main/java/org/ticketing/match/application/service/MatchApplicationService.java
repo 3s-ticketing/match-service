@@ -52,7 +52,6 @@ import org.ticketing.match.domain.service.StadiumProvider;
  * Feign 호출 분기가 추가될 예정이다.
  */
 @Service
-@Transactional(readOnly = true)
 @RequiredArgsConstructor
 public class MatchApplicationService {
 
@@ -70,9 +69,8 @@ public class MatchApplicationService {
     /**
      * 경기 생성.
      *
-     * <p>메서드 레벨에 {@code @Transactional} 을 선언하지 않는다.
-     * 클래스 레벨 {@code readOnly = true} 트랜잭션도 이 메서드 실행 중에는
-     * JPA 작업이 없으므로 실질적으로 커넥션을 점유하지 않는다.
+     * <p>트랜잭션 없이 외부 서비스 검증을 먼저 수행한다.
+     * Feign 호출 동안 DB 커넥션을 점유하지 않으며,
      * Feign 호출이 끝난 뒤 {@link MatchWriteService#create}가 새 트랜잭션을 열어
      * 모든 쓰기를 원자적으로 처리한다.
      */
@@ -107,6 +105,7 @@ public class MatchApplicationService {
     // 조회
     // ──────────────────────────────────────────
 
+    @Transactional(readOnly = true)
     public MatchResult findMatch(FindMatchQuery query) {
         Match match = matchRepository.findActiveById(query.matchId())
                 .orElseThrow(() -> new MatchNotFoundException(query.matchId()));
@@ -161,8 +160,7 @@ public class MatchApplicationService {
     /**
      * ZonePolicy 추가.
      *
-     * <p>{@code createMatch} 와 동일하게 메서드 레벨 {@code @Transactional} 을 두지 않는다.
-     * SeatGrade 존재 검증을 Feign 으로 수행한 뒤 {@link MatchWriteService#addZonePolicy} 에
+     * <p>SeatGrade 존재 검증을 Feign 으로 수행한 뒤 {@link MatchWriteService#addZonePolicy} 에
      * 쓰기를 위임하므로, Feign 호출 동안 DB 커넥션을 점유하지 않는다.
      */
     public MatchZonePolicyResult addZonePolicy(AddMatchZonePolicyCommand command) {

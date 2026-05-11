@@ -36,9 +36,10 @@ import org.ticketing.config.security.LoginFilter;
  *   <li>그 외 — 인증 필요 (JWT 검증)</li>
  * </ul>
  */
-@Configuration
-@EnableWebSecurity
-@EnableMethodSecurity
+// MVP 통합 테스트 기간 동안 MatchSecurityConfig (infrastructure/config) 로 대체됨
+// @Configuration
+// @EnableWebSecurity
+// @EnableMethodSecurity
 public class WebSecurityConfig {
 
     /**
