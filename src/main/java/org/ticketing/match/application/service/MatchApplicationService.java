@@ -1,5 +1,8 @@
 package org.ticketing.match.application.service;
 
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,12 +16,16 @@ import org.ticketing.match.application.dto.command.UpdateMatchZonePolicyCommand;
 import org.ticketing.match.application.dto.query.FindMatchQuery;
 import org.ticketing.match.application.dto.result.MatchResult;
 import org.ticketing.match.application.dto.result.MatchZonePolicyResult;
+import org.ticketing.match.application.dto.result.RemainingSeatsResult;
+import org.ticketing.match.application.dto.result.RemainingSeatsResult.ZoneAvailability;
 import org.ticketing.match.domain.exception.ClubNotFoundException;
 import org.ticketing.match.domain.exception.MatchNotFoundException;
 import org.ticketing.match.domain.exception.SeatGradeNotFoundException;
 import org.ticketing.match.domain.exception.StadiumNotFoundException;
 import org.ticketing.match.domain.model.Match;
+import org.ticketing.match.domain.model.MatchZonePolicy;
 import org.ticketing.match.domain.repository.MatchRepository;
+import org.ticketing.match.domain.repository.SeatAvailabilityRepository;
 import org.ticketing.match.domain.service.ClubProvider;
 import org.ticketing.match.domain.service.SeatGradeProvider;
 import org.ticketing.match.domain.service.StadiumProvider;
@@ -54,6 +61,7 @@ public class MatchApplicationService {
     private final ClubProvider clubProvider;
     private final StadiumProvider stadiumProvider;
     private final SeatGradeProvider seatGradeProvider;
+    private final SeatAvailabilityRepository seatAvailabilityRepository;
 
     // ──────────────────────────────────────────
     // Match 생성 — Feign 검증 후 커맨드 서비스에 위임
@@ -105,6 +113,32 @@ public class MatchApplicationService {
         return MatchResult.from(match);
     }
 
+    /**
+     * 경기의 구역별 실시간 잔여 좌석 수 조회.
+     *
+     * <p>Redis Hash 에서 잔여 좌석 수를 읽고, DB 의 ZonePolicy(가격·총 좌석 수) 와 조인하여 반환한다.
+     * Redis 캐시가 없는 구역은 totalSeatCount 를 remainingCount 로 대체한다
+     * (APPROVED 전 조회 등 초기화 전 상태 방어).
+     */
+    public RemainingSeatsResult getRemainingSeats(UUID matchId) {
+        Match match = matchRepository.findActiveById(matchId)
+                .orElseThrow(() -> new MatchNotFoundException(matchId));
+
+        Map<UUID, Long> remaining = seatAvailabilityRepository.findAll(matchId);
+
+        List<ZoneAvailability> zones = match.getZonePolicies().stream()
+                .filter(p -> p.getDeletedAt() == null)
+                .map(p -> new ZoneAvailability(
+                        p.getSeatGradeId(),
+                        p.getPrice(),
+                        p.getTotalSeatCount(),
+                        remaining.getOrDefault(p.getSeatGradeId(), p.getTotalSeatCount())
+                ))
+                .toList();
+
+        return new RemainingSeatsResult(matchId, zones);
+    }
+
     // ──────────────────────────────────────────
     // 쓰기 위임 — MatchCommandService
     // ──────────────────────────────────────────
@@ -135,7 +169,9 @@ public class MatchApplicationService {
         if (!seatGradeProvider.existsById(command.seatGradeId())) {
             throw new SeatGradeNotFoundException(command.seatGradeId());
         }
-        return matchWriteService.addZonePolicy(command);
+        // seat-service 에서 해당 구역의 총 좌석 수를 조회하여 ZonePolicy 생성 시 함께 저장
+        long totalSeatCount = seatGradeProvider.countBySeatGradeId(command.seatGradeId());
+        return matchWriteService.addZonePolicy(command, totalSeatCount);
     }
 
     @Transactional
