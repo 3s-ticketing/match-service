@@ -118,7 +118,11 @@ public class MatchApplicationService {
      * <p>Redis Hash 에서 잔여 좌석 수를 읽고, DB 의 ZonePolicy(가격·총 좌석 수) 와 조인하여 반환한다.
      * Redis 캐시가 없는 구역은 totalSeatCount 를 remainingCount 로 대체한다
      * (APPROVED 전 조회 등 초기화 전 상태 방어).
+     *
+     * <p>{@code @Transactional(readOnly = true)} 를 선언하여 {@code match.getZonePolicies()} 지연 로딩 시
+     * Hibernate 세션이 열려 있도록 보장한다. 없으면 {@link org.hibernate.LazyInitializationException} 발생.
      */
+    @Transactional(readOnly = true)
     public RemainingSeatsResult getRemainingSeats(UUID matchId) {
         Match match = matchRepository.findActiveById(matchId)
                 .orElseThrow(() -> new MatchNotFoundException(matchId));
