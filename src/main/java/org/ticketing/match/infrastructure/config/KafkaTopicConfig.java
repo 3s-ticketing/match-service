@@ -29,6 +29,12 @@ public class KafkaTopicConfig {
     @Value("${topics.match.canceled:match.canceled}")
     private String matchCanceledTopic;
 
+    @Value("${topics.reservation.seat.reserved:reservation.seat.reserved}")
+    private String reservationSeatReservedTopic;
+
+    @Value("${topics.reservation.seat.released:reservation.seat.released}")
+    private String reservationSeatReleasedTopic;
+
     @Bean
     public NewTopic matchApprovedTopic() {
         return TopicBuilder.name(matchApprovedTopic)
@@ -40,6 +46,22 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic matchCanceledTopic() {
         return TopicBuilder.name(matchCanceledTopic)
+                .partitions(partitions)
+                .replicas(replicas)
+                .build();
+    }
+
+    @Bean
+    public NewTopic reservationSeatReservedTopic() {
+        return TopicBuilder.name(reservationSeatReservedTopic)
+                .partitions(partitions)
+                .replicas(replicas)
+                .build();
+    }
+
+    @Bean
+    public NewTopic reservationSeatReleasedTopic() {
+        return TopicBuilder.name(reservationSeatReleasedTopic)
                 .partitions(partitions)
                 .replicas(replicas)
                 .build();

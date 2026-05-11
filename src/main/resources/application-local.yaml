@@ -25,6 +25,11 @@ spring:
   flyway:
     enabled: false
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
@@ -40,3 +45,12 @@ eureka:
   client:
     register-with-eureka: true
     fetch-registry: true
+
+topics:
+  match:
+    approved: match.approved
+    canceled: match.canceled
+  reservation:
+    seat:
+      reserved: reservation.seat.reserved
+      released: reservation.seat.released
