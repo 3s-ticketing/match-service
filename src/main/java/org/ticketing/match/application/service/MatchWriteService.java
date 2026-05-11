@@ -1,7 +1,11 @@
 package org.ticketing.match.application.service;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +25,7 @@ import org.ticketing.match.domain.model.Match;
 import org.ticketing.match.domain.model.MatchStatus;
 import org.ticketing.match.domain.model.MatchZonePolicy;
 import org.ticketing.match.domain.repository.MatchRepository;
+import org.ticketing.match.domain.repository.SeatAvailabilityRepository;
 
 /**
  * Match 어그리게이트 쓰기 전담 서비스.
@@ -42,6 +47,7 @@ public class MatchWriteService {
 
     private final MatchRepository matchRepository;
     private final MatchEventPublisher matchEventPublisher;
+    private final SeatAvailabilityRepository seatAvailabilityRepository;
 
     // ──────────────────────────────────────────
     // Match 생성
@@ -77,6 +83,20 @@ public class MatchWriteService {
             matchEventPublisher.publishMatchApproved(
                     new MatchApprovedEvent(match.getId(), match.getTicketOpenAt())
             );
+            // APPROVED 전환 시 Redis 잔여 좌석 초기화 — DB 커밋 후 실행하여 정합성 보장
+            Map<UUID, Long> seatCounts = match.getZonePolicies().stream()
+                    .filter(p -> p.getDeletedAt() == null)
+                    .collect(Collectors.toMap(
+                            MatchZonePolicy::getSeatGradeId,
+                            MatchZonePolicy::getTotalSeatCount
+                    ));
+            UUID matchId = match.getId();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    seatAvailabilityRepository.initialize(matchId, seatCounts);
+                }
+            });
         } else if (command.targetStatus() == MatchStatus.CANCELED) {
             matchEventPublisher.publishMatchCanceled(
                     new MatchCanceledEvent(match.getId(), OffsetDateTime.now())
@@ -95,9 +115,9 @@ public class MatchWriteService {
     // ZonePolicy
     // ──────────────────────────────────────────
 
-    public MatchZonePolicyResult addZonePolicy(AddMatchZonePolicyCommand command) {
+    public MatchZonePolicyResult addZonePolicy(AddMatchZonePolicyCommand command, long totalSeatCount) {
         Match match = getActive(command.matchId());
-        MatchZonePolicy policy = match.addZonePolicy(command.seatGradeId(), command.price());
+        MatchZonePolicy policy = match.addZonePolicy(command.seatGradeId(), command.price(), totalSeatCount);
         matchRepository.saveAndFlush(match);
         return MatchZonePolicyResult.from(policy);
     }
