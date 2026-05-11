@@ -66,4 +66,26 @@ public class KafkaTopicConfig {
                 .replicas(replicas)
                 .build();
     }
+
+    // ──────────────────────────────────────────
+    // Dead Letter Topics (DLT)
+    // 처리 실패 메시지가 3회 재시도 후 전송되는 토픽.
+    // 파티션 수는 원본 토픽과 동일하게 유지하여 오프셋 추적 용이.
+    // ──────────────────────────────────────────
+
+    @Bean
+    public NewTopic reservationSeatReservedDltTopic() {
+        return TopicBuilder.name(reservationSeatReservedTopic + ".DLT")
+                .partitions(partitions)
+                .replicas(replicas)
+                .build();
+    }
+
+    @Bean
+    public NewTopic reservationSeatReleasedDltTopic() {
+        return TopicBuilder.name(reservationSeatReleasedTopic + ".DLT")
+                .partitions(partitions)
+                .replicas(replicas)
+                .build();
+    }
 }
