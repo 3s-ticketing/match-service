@@ -6,4 +6,6 @@ import java.util.UUID;
 public interface SeatGradeProvider {
 
     boolean existsById(UUID seatGradeId);
+
+    long countBySeatGradeId(UUID seatGradeId);
 }
