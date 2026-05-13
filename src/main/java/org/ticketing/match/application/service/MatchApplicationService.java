@@ -29,6 +29,8 @@ import org.ticketing.match.domain.repository.SeatAvailabilityRepository;
 import org.ticketing.match.domain.service.ClubProvider;
 import org.ticketing.match.domain.service.SeatGradeProvider;
 import org.ticketing.match.domain.service.StadiumProvider;
+import org.ticketing.match.domain.exception.MatchZonePolicyNotFoundException;
+
 
 /**
  * Match 어그리게이트 오케스트레이션 서비스.
@@ -185,4 +187,36 @@ public class MatchApplicationService {
     public void removeZonePolicy(RemoveMatchZonePolicyCommand command) {
         matchWriteService.removeZonePolicy(command);
     }
+
+    // ──────────────────────────────────────────
+    // 내부 서비스 간 통신 — reservation-service 가격 조회
+    // ──────────────────────────────────────────
+
+    /**
+     * 경기-좌석등급 조합의 가격 정책 조회.
+     *
+     * <p>reservation-service 가 좌석 confirm(결제 확정) 시 가격을 스냅샷으로 저장해야 하므로
+     * 내부 API 로 조회한다. {@code /internal/matches/{matchId}/seat-grades/{seatGradeId}}
+     *
+     * @param matchId      경기 ID
+     * @param seatGradeId  좌석 등급 ID
+     * @return 해당 경기의 좌석 등급별 가격 ({@link SeatGradePrice})
+     * @throws MatchNotFoundException            경기가 존재하지 않을 때
+     * @throws MatchZonePolicyNotFoundException  해당 등급의 ZonePolicy 가 없을 때
+     */
+    @Transactional(readOnly = true)
+    public SeatGradePrice getSeatGradePrice(UUID matchId, UUID seatGradeId) {
+        Match match = matchRepository.findActiveById(matchId)
+                .orElseThrow(() -> new MatchNotFoundException(matchId));
+
+        MatchZonePolicy policy = match.getZonePolicies().stream()
+                .filter(p -> p.getSeatGradeId().equals(seatGradeId) && p.getDeletedAt() == null)
+                .findFirst()
+                .orElseThrow(() -> new MatchZonePolicyNotFoundException(seatGradeId));
+
+        return new SeatGradePrice(policy.getSeatGradeId(), policy.getPrice());
+    }
+
+    /** 내부 조회 결과 — 좌석 등급 ID + 가격. */
+    public record SeatGradePrice(UUID seatGradeId, Long price) {}
 }
