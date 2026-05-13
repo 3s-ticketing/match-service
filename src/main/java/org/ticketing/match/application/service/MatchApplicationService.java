@@ -29,6 +29,8 @@ import org.ticketing.match.domain.repository.SeatAvailabilityRepository;
 import org.ticketing.match.domain.service.ClubProvider;
 import org.ticketing.match.domain.service.SeatGradeProvider;
 import org.ticketing.match.domain.service.StadiumProvider;
+import org.ticketing.match.domain.exception.MatchZonePolicyNotFoundException;
+
 
 /**
  * Match 어그리게이트 오케스트레이션 서비스.
