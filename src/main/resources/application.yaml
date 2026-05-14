@@ -11,6 +11,16 @@ spring:
         jwt:
           issuer-uri: http://localhost:18080/realms/ticketing
 
+  data:
+    redis:
+      lettuce:
+        pool:
+          enabled: true    # commons-pool2 의존성만으로는 풀이 활성화되지 않음 — 명시 필요
+          max-active: 20   # 동시 Redis 연결 최대 수 (match-service 는 잔여 좌석 조회/갱신 위주)
+          max-idle: 10
+          min-idle: 2
+          max-wait: 500ms  # 풀 대기 타임아웃 — 초과 시 PoolExhaustedError
+
   kafka:
     consumer:
       # auto-commit 비활성화 — AckMode.RECORD 로 처리 완료 후 수동 커밋

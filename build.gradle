@@ -67,6 +67,7 @@ dependencies {
 
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'org.apache.commons:commons-pool2'  // Lettuce 커넥션 풀 활성화
 }
 
 tasks.named('test') {
