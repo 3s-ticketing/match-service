@@ -68,6 +68,10 @@ dependencies {
 	// Redis
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 	implementation 'org.apache.commons:commons-pool2'  // Lettuce 커넥션 풀 활성화
+
+	// Caffeine — L1 로컬 캐시 (Redis 장애 시 fallback, Stampede 완전 차단)
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+	implementation 'com.github.ben-manes.caffeine:caffeine'
 }
 
 tasks.named('test') {
