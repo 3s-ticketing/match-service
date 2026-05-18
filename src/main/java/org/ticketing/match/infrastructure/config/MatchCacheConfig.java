@@ -178,8 +178,12 @@ public class MatchCacheConfig implements CachingConfigurer {
      *
      * <p>기본 {@link SimpleCacheErrorHandler} 는 예외를 그대로 전파하여 서비스 장애로 이어진다.
      * 이 핸들러는 Redis 오류를 WARN 로그로만 기록하고 계속 진행한다.
+     *
+     * <p>{@link CachingConfigurer} 구현체의 메서드는 Spring 캐시 인프라가 인터페이스를 통해
+     * 직접 호출하므로 {@code @Bean} 등록이 필요 없다.
+     * {@code @Bean}을 붙이면 공통 모듈 {@code KafkaConfig.errorHandler()} 와 빈 이름 충돌이 발생한다.
      */
-    @Bean
+    @Override
     public CacheErrorHandler errorHandler() {
         return new SimpleCacheErrorHandler() {
             @Override
