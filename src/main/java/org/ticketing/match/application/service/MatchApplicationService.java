@@ -23,12 +23,12 @@ import org.ticketing.match.domain.exception.MatchNotFoundException;
 import org.ticketing.match.domain.exception.SeatGradeNotFoundException;
 import org.ticketing.match.domain.exception.StadiumNotFoundException;
 import org.ticketing.match.domain.model.Match;
-import org.ticketing.match.domain.model.MatchZonePolicy;
 import org.ticketing.match.domain.repository.MatchRepository;
 import org.ticketing.match.domain.repository.SeatAvailabilityRepository;
 import org.ticketing.match.domain.service.ClubProvider;
 import org.ticketing.match.domain.service.SeatGradeProvider;
 import org.ticketing.match.domain.service.StadiumProvider;
+import org.ticketing.match.application.dto.result.MatchSnapshot;
 import org.ticketing.match.domain.exception.MatchZonePolicyNotFoundException;
 
 
@@ -59,6 +59,7 @@ public class MatchApplicationService {
 
     private final MatchRepository matchRepository;
     private final MatchWriteService matchWriteService;
+    private final MatchSnapshotCacheService matchSnapshotCacheService;
     private final ClubProvider clubProvider;
     private final StadiumProvider stadiumProvider;
     private final SeatGradeProvider seatGradeProvider;
@@ -117,27 +118,21 @@ public class MatchApplicationService {
     /**
      * 경기의 구역별 실시간 잔여 좌석 수 조회.
      *
-     * <p>Redis Hash 에서 잔여 좌석 수를 읽고, DB 의 ZonePolicy(가격·총 좌석 수) 와 조인하여 반환한다.
-     * Redis 캐시가 없는 구역은 totalSeatCount 를 remainingCount 로 대체한다
-     * (APPROVED 전 조회 등 초기화 전 상태 방어).
-     *
-     * <p>{@code @Transactional(readOnly = true)} 를 선언하여 {@code match.getZonePolicies()} 지연 로딩 시
-     * Hibernate 세션이 열려 있도록 보장한다. 없으면 {@link org.hibernate.LazyInitializationException} 발생.
+     * <p>Match + ZonePolicy 정적 데이터는 {@link MatchSnapshotCacheService} 를 통해 Redis 에서 읽는다.
+     * 캐시 히트 시 DB 쿼리 0회 / 캐시 미스 시 fetch join 으로 단 1번만 DB 조회.
+     * 실시간 잔여 좌석 수는 {@link SeatAvailabilityRepository} (Redis Hash) 에서 읽는다.
      */
-    @Transactional(readOnly = true)
     public RemainingSeatsResult getRemainingSeats(UUID matchId) {
-        Match match = matchRepository.findActiveById(matchId)
-                .orElseThrow(() -> new MatchNotFoundException(matchId));
+        MatchSnapshot snapshot = matchSnapshotCacheService.getSnapshot(matchId);
 
         Map<UUID, Long> remaining = seatAvailabilityRepository.findAll(matchId);
 
-        List<ZoneAvailability> zones = match.getZonePolicies().stream()
-                .filter(p -> p.getDeletedAt() == null)
+        List<ZoneAvailability> zones = snapshot.zonePolicies().stream()
                 .map(p -> new ZoneAvailability(
-                        p.getSeatGradeId(),
-                        p.getPrice(),
-                        p.getTotalSeatCount(),
-                        remaining.getOrDefault(p.getSeatGradeId(), p.getTotalSeatCount())
+                        p.seatGradeId(),
+                        p.price(),
+                        p.totalSeatCount(),
+                        remaining.getOrDefault(p.seatGradeId(), p.totalSeatCount())
                 ))
                 .toList();
 
@@ -204,17 +199,14 @@ public class MatchApplicationService {
      * @throws MatchNotFoundException            경기가 존재하지 않을 때
      * @throws MatchZonePolicyNotFoundException  해당 등급의 ZonePolicy 가 없을 때
      */
-    @Transactional(readOnly = true)
     public SeatGradePrice getSeatGradePrice(UUID matchId, UUID seatGradeId) {
-        Match match = matchRepository.findActiveById(matchId)
-                .orElseThrow(() -> new MatchNotFoundException(matchId));
+        MatchSnapshot snapshot = matchSnapshotCacheService.getSnapshot(matchId);
 
-        MatchZonePolicy policy = match.getZonePolicies().stream()
-                .filter(p -> p.getSeatGradeId().equals(seatGradeId) && p.getDeletedAt() == null)
+        return snapshot.zonePolicies().stream()
+                .filter(p -> p.seatGradeId().equals(seatGradeId))
                 .findFirst()
+                .map(p -> new SeatGradePrice(p.seatGradeId(), p.price()))
                 .orElseThrow(() -> new MatchZonePolicyNotFoundException(seatGradeId));
-
-        return new SeatGradePrice(policy.getSeatGradeId(), policy.getPrice());
     }
 
     /** 내부 조회 결과 — 좌석 등급 ID + 가격. */
