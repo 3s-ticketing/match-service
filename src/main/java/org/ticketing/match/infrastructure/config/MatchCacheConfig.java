@@ -15,6 +15,7 @@ import org.springframework.cache.interceptor.SimpleCacheErrorHandler;
 import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -159,6 +160,7 @@ public class MatchCacheConfig implements CachingConfigurer {
      * 이 매니저를 우회하여 Caffeine 전용으로 동작한다.
      */
     @Bean
+    @Primary
     public CacheManager cacheManager(
             CacheManager caffeineCacheManager,
             CacheManager redisCacheManager
