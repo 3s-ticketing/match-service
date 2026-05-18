@@ -24,7 +24,6 @@ import org.ticketing.match.domain.exception.SeatGradeNotFoundException;
 import org.ticketing.match.domain.exception.StadiumNotFoundException;
 import org.ticketing.match.domain.model.Match;
 import org.ticketing.match.domain.repository.MatchRepository;
-import org.ticketing.match.domain.repository.SeatAvailabilityRepository;
 import org.ticketing.match.domain.service.ClubProvider;
 import org.ticketing.match.domain.service.SeatGradeProvider;
 import org.ticketing.match.domain.service.StadiumProvider;
@@ -60,10 +59,10 @@ public class MatchApplicationService {
     private final MatchRepository matchRepository;
     private final MatchWriteService matchWriteService;
     private final MatchSnapshotCacheService matchSnapshotCacheService;
+    private final SeatAvailabilityCacheService seatAvailabilityCacheService;
     private final ClubProvider clubProvider;
     private final StadiumProvider stadiumProvider;
     private final SeatGradeProvider seatGradeProvider;
-    private final SeatAvailabilityRepository seatAvailabilityRepository;
 
     // ──────────────────────────────────────────
     // Match 생성 — Feign 검증 후 커맨드 서비스에 위임
@@ -116,16 +115,23 @@ public class MatchApplicationService {
     }
 
     /**
-     * 경기의 구역별 실시간 잔여 좌석 수 조회.
+     * 경기의 구역별 잔여 좌석 수 조회 (표시용).
      *
-     * <p>Match + ZonePolicy 정적 데이터는 {@link MatchSnapshotCacheService} 를 통해 Redis 에서 읽는다.
-     * 캐시 히트 시 DB 쿼리 0회 / 캐시 미스 시 fetch join 으로 단 1번만 DB 조회.
-     * 실시간 잔여 좌석 수는 {@link SeatAvailabilityRepository} (Redis Hash) 에서 읽는다.
+     * <p>두 캐시를 조합하여 응답을 구성한다:
+     * <ol>
+     *   <li>{@link MatchSnapshotCacheService}: Match + ZonePolicy 정적 구조
+     *       — L1(Caffeine 5분) → L2(Redis 60분) → DB(fetch join)</li>
+     *   <li>{@link SeatAvailabilityCacheService}: 구역별 잔여 좌석 수
+     *       — L1(Caffeine 2초) → Redis {@code HGETALL} (2초당 최대 1회)</li>
+     * </ol>
+     *
+     * <p>실제 예약 가능 여부 판단 및 좌석 차감은 reservation-service 의 Redis DECR 로
+     * 별도 처리되므로, 이 메서드의 2초 오차는 표시용에 한해 허용된다.
      */
     public RemainingSeatsResult getRemainingSeats(UUID matchId) {
         MatchSnapshot snapshot = matchSnapshotCacheService.getSnapshot(matchId);
 
-        Map<UUID, Long> remaining = seatAvailabilityRepository.findAll(matchId);
+        Map<UUID, Long> remaining = seatAvailabilityCacheService.getRemaining(matchId);
 
         List<ZoneAvailability> zones = snapshot.zonePolicies().stream()
                 .map(p -> new ZoneAvailability(
