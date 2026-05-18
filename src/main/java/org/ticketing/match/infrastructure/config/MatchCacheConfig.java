@@ -2,7 +2,6 @@ package org.ticketing.match.infrastructure.config;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.Duration;
-import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -31,9 +30,9 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  *   match-snapshot  : Match + ZonePolicy 정적 구조 데이터
  *                     L1(Caffeine 5분) → L2(Redis 60분) → DB(fetch join)
  *
- *   seat-remaining  : 구역별 잔여 좌석 수 표시용 스냅샷
- *                     L1(Caffeine 2초) 전용 — Redis 는 원본 데이터이므로 L2 캐시 없음
- *                     TTL 2초: Thundering Herd to Redis 완화, 허용 가능한 표시 지연
+ *   seat-remaining  : {@link org.ticketing.match.application.service.SeatAvailabilityCacheService} 참조.
+ *                     Caffeine {@code LoadingCache} 를 직접 사용(stale-while-revalidate)하므로
+ *                     Spring Cache 추상화에는 등록하지 않는다.
  * </pre>
  *
  * <h3>Caffeine 계층 구조 (match-snapshot)</h3>
@@ -45,15 +44,6 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  *          DB (fetch join, ~10ms)
  * </pre>
  *
- * <h3>seat-remaining 캐시 구조</h3>
- * <pre>
- *   요청 → Caffeine (L1, 2초 TTL, ~0ms)
- *            ↓ miss (2초마다 1회)
- *          Redis Hash HGETALL (원본, ~1ms)
- *
- *   sync=true: TTL 만료 시 단 1개 스레드만 Redis 조회 → Thundering Herd 방지
- * </pre>
- *
  * <h3>Redis 장애 시 동작 (match-snapshot)</h3>
  * <ul>
  *   <li>Caffeine L1 히트 → Redis 없이도 서비스 유지.</li>
@@ -61,10 +51,9 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  *   <li>Redis 복구 후 → 다음 캐시 미스 시 Redis 에 자동 재적재.</li>
  * </ul>
  *
- * <h3>Cache Stampede / Thundering Herd 방지</h3>
+ * <h3>Cache Stampede / Thundering Herd 방지 (match-snapshot)</h3>
  * <ul>
- *   <li>match-snapshot: Caffeine {@code computeIfAbsent} + {@code @Cacheable(sync=true)} 로 단일 로더 보장.</li>
- *   <li>seat-remaining: Caffeine {@code computeIfAbsent} + {@code @Cacheable(sync=true)} 로 2초마다 Redis 조회 1회로 제한.</li>
+ *   <li>Caffeine {@code computeIfAbsent} + {@code @Cacheable(sync=true)} 로 단일 로더 보장.</li>
  * </ul>
  */
 @Slf4j
@@ -74,28 +63,15 @@ public class MatchCacheConfig implements CachingConfigurer {
 
     public static final String MATCH_SNAPSHOT_CACHE = "match-snapshot";
 
-    /**
-     * 잔여 좌석 표시용 캐시.
-     *
-     * <p>Redis Hash({@code seat:remaining:{matchId}}) 가 원본이므로 L2(Redis) 캐시는 사용하지 않는다.
-     * Caffeine L1 만 사용하며, TTL 2초로 Thundering Herd 를 완화한다.
-     * 사용 시 {@code @Cacheable(cacheManager = "caffeineCacheManager")} 로 지정해
-     * {@link CompositeCacheManager} 를 우회해야 한다.
-     */
-    public static final String SEAT_REMAINING_CACHE = "seat-remaining";
-
-    // ── L1: Caffeine (캐시별 TTL 분리) ───────────────────────────────────────
+    // ── L1: Caffeine (match-snapshot 전용) ───────────────────────────────────
 
     /**
-     * Caffeine L1 캐시 매니저.
+     * Caffeine L1 캐시 매니저 ({@code match-snapshot} 전용).
      *
-     * <p>캐시마다 TTL 이 다르므로 {@link CaffeineCache} 를 직접 생성하고
-     * {@link SimpleCacheManager} 로 묶는다.
+     * <p>TTL 5분: Redis L2(60분) 보다 짧게 설정해 L1 만료 후 L2 에서 최신 값을 확인한다.
      *
-     * <ul>
-     *   <li>{@code match-snapshot}: TTL 5분 — Redis L2 보다 짧게 설정해 L1 만료 후 L2 에서 최신 값 확인</li>
-     *   <li>{@code seat-remaining}: TTL 2초 — 표시용 허용 오차, Redis 조회를 2초당 1회로 제한</li>
-     * </ul>
+     * <p>{@code seat-remaining} 은 {@link org.ticketing.match.application.service.SeatAvailabilityCacheService}
+     * 에서 Caffeine {@code LoadingCache} 로 직접 관리하므로 여기에 등록하지 않는다.
      */
     @Bean("caffeineCacheManager")
     public CacheManager caffeineCacheManager() {
@@ -108,17 +84,8 @@ public class MatchCacheConfig implements CachingConfigurer {
                         .build()
         );
 
-        CaffeineCache seatRemainingCache = new CaffeineCache(
-                SEAT_REMAINING_CACHE,
-                Caffeine.newBuilder()
-                        .maximumSize(1_000)                    // 경기 1,000개 상한
-                        .expireAfterWrite(Duration.ofSeconds(2)) // 표시용 허용 오차 2초
-                        .recordStats()
-                        .build()
-        );
-
         SimpleCacheManager manager = new SimpleCacheManager();
-        manager.setCaches(List.of(matchSnapshotCache, seatRemainingCache));
+        manager.setCaches(List.of(matchSnapshotCache));
         return manager;
     }
 
@@ -155,9 +122,7 @@ public class MatchCacheConfig implements CachingConfigurer {
     /**
      * {@link CompositeCacheManager}: L1(Caffeine) → L2(Redis) 순서로 조회.
      *
-     * <p>{@code match-snapshot} 에만 사용한다.
-     * {@code seat-remaining} 은 {@code @Cacheable(cacheManager = "caffeineCacheManager")} 로
-     * 이 매니저를 우회하여 Caffeine 전용으로 동작한다.
+     * <p>{@code match-snapshot} 전용. L1 미스 시 L2(Redis) 에서 자동으로 값을 조회한다.
      */
     @Bean
     @Primary
