@@ -119,6 +119,20 @@ public class MatchWriteService {
                                 + "APPROVED 커밋은 완료됐으나 Redis 가 비어 있음. "
                                 + "수동 재초기화 또는 재승인 처리 필요.", matchId, e);
                     }
+                    // MatchSnapshot Cache Warm-up:
+                    // APPROVED 직후 첫 요청에서 Cache Stampede 가 발생하지 않도록
+                    // 커밋 후 즉시 캐시를 채운다.
+                    //
+                    // [중요] matchSnapshotCacheService 는 Spring 프록시 빈이므로
+                    // getSnapshot() 호출 시 @Cacheable AOP 가 정상 적용된다.
+                    // (warmUp() 같은 같은 클래스 내 self-invocation 이 아님)
+                    try {
+                        matchSnapshotCacheService.getSnapshot(matchId);
+                        log.info("[MatchWriteService] matchId={} MatchSnapshot 캐시 사전 적재 완료.", matchId);
+                    } catch (Exception e) {
+                        log.warn("[MatchWriteService] matchId={} MatchSnapshot 캐시 사전 적재 실패. "
+                                + "첫 요청에서 캐시 미스 발생 가능.", matchId, e);
+                    }
                 }
             });
         } else if (command.targetStatus() == MatchStatus.CANCELED) {
