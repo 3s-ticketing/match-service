@@ -50,6 +50,7 @@ public class MatchWriteService {
     private final MatchRepository matchRepository;
     private final MatchEventPublisher matchEventPublisher;
     private final SeatAvailabilityRepository seatAvailabilityRepository;
+    private final MatchSnapshotCacheService matchSnapshotCacheService;
 
     // ──────────────────────────────────────────
     // Match 생성
@@ -66,6 +67,7 @@ public class MatchWriteService {
     public MatchResult update(UpdateMatchCommand command) {
         Match match = getActive(command.matchId());
         match.update(command.name(), command.matchDatetime(), command.ticketOpenAt());
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchResult.from(match);
     }
 
@@ -125,12 +127,14 @@ public class MatchWriteService {
             );
         }
 
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchResult.from(match);
     }
 
     public void delete(DeleteMatchCommand command) {
         Match match = getActive(command.matchId());
         match.delete(command.deletedBy());
+        matchSnapshotCacheService.evict(command.matchId());
     }
 
     // ──────────────────────────────────────────
@@ -141,18 +145,21 @@ public class MatchWriteService {
         Match match = getActive(command.matchId());
         MatchZonePolicy policy = match.addZonePolicy(command.seatGradeId(), command.price(), totalSeatCount);
         matchRepository.saveAndFlush(match);
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchZonePolicyResult.from(policy);
     }
 
     public MatchZonePolicyResult updateZonePolicy(UpdateMatchZonePolicyCommand command) {
         Match match = getActive(command.matchId());
         match.updateZonePolicy(command.policyId(), command.price());
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchZonePolicyResult.from(match.findZonePolicy(command.policyId()));
     }
 
     public void removeZonePolicy(RemoveMatchZonePolicyCommand command) {
         Match match = getActive(command.matchId());
         match.removeZonePolicy(command.policyId(), command.deletedBy());
+        matchSnapshotCacheService.evict(command.matchId());
     }
 
     // ──────────────────────────────────────────
