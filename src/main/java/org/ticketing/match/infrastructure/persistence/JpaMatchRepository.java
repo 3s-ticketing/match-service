@@ -16,6 +16,6 @@ public interface JpaMatchRepository extends JpaRepository<Match, UUID> {
      * ZonePolicy 를 즉시 로딩(fetch join)해 N+1 쿼리를 방지한다.
      * MatchSnapshotCacheService 의 캐시 미스 시 단 1회 호출된다.
      */
-    @Query("select m from Match m join fetch m.zonePolicies where m.id = :id and m.deletedAt is null")
+    @Query("select distinct m from Match m left join fetch m.zonePolicies where m.id = :id and m.deletedAt is null")
     Optional<Match> findActiveByIdWithPolicies(@Param("id") UUID id);
 }

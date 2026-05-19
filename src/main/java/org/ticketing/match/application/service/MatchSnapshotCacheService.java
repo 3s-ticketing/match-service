@@ -37,9 +37,9 @@ import static org.ticketing.match.infrastructure.config.MatchCacheConfig.MATCH_S
  * 이 서비스의 프록시 메서드({@link #getSnapshot})를 직접 호출해야 한다.
  *
  * <h3>Evict 양쪽 계층 무효화</h3>
- * <p>{@code CompositeCacheManager.getCache()} 는 첫 번째 매니저(Caffeine)의 Cache 만 반환하므로,
- * {@code @CacheEvict} 어노테이션만으로는 L2(Redis) 가 삭제되지 않는다.
- * {@link #evict} 는 두 캐시 매니저에 각각 직접 evict 를 호출한다.
+ * <p>Primary {@link CacheManager} 는 {@link TwoLevelCache} 를 통해 L1·L2 를 함께 관리하지만,
+ * {@link #evict} 는 각 매니저에 직접 evict 를 호출하여 명시적으로 양쪽을 무효화한다.
+ * 이를 통해 Primary 빈 교체 등의 구성 변경이 있어도 evict 동작이 보장된다.
  */
 @Slf4j
 @Service
@@ -79,9 +79,10 @@ public class MatchSnapshotCacheService {
     /**
      * L1(Caffeine) + L2(Redis) 양쪽 캐시 무효화.
      *
-     * <p>{@code CompositeCacheManager} 는 {@code getCache()} 시 첫 번째 매니저(Caffeine) 만 반환하므로,
-     * {@code @CacheEvict} 단독으로는 Redis L2 가 삭제되지 않는다.
-     * 이 메서드는 두 캐시 매니저에 각각 직접 evict 를 호출하여 양쪽을 모두 무효화한다.
+     * <p>각 캐시 매니저에 직접 evict 를 호출하여 L1·L2 를 명시적으로 무효화한다.
+     * Primary {@link org.springframework.cache.CacheManager} 가
+     * {@link org.ticketing.match.infrastructure.config.TwoLevelCache} 를 사용하더라도
+     * 내부 Cache 인스턴스는 공유되므로 직접 evict 와 동일한 효과를 낸다.
      *
      * <p>Redis 장애 시 {@link org.ticketing.match.infrastructure.config.MatchCacheConfig}
      * 의 {@code CacheErrorHandler} 가 Redis evict 오류를 로깅 후 무시한다.
