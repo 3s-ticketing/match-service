@@ -2,6 +2,7 @@ package org.ticketing.match.infrastructure.config;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import java.time.Duration;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
@@ -30,9 +31,9 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  *   match-snapshot  : Match + ZonePolicy 정적 구조 데이터
  *                     L1(Caffeine 5분) → L2(Redis 60분) → DB(fetch join)
  *
- *   seat-remaining  : {@link org.ticketing.match.application.service.SeatAvailabilityCacheService} 참조.
- *                     Caffeine {@code LoadingCache} 를 직접 사용(stale-while-revalidate)하므로
- *                     Spring Cache 추상화에는 등록하지 않는다.
+ *   seat-remaining  : 구역별 잔여 좌석 수. L1(Caffeine 2초) → Redis(원본) 구조.
+ *                     {@code @Cacheable(sync=true)} + {@code expireAfterWrite(2s)} 로 stampede 방지.
+ *                     Redis 가 원본이므로 L2 Redis 캐시 미등록.
  * </pre>
  *
  * <h3>Caffeine 계층 구조 (match-snapshot)</h3>
@@ -62,16 +63,18 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class MatchCacheConfig implements CachingConfigurer {
 
     public static final String MATCH_SNAPSHOT_CACHE = "match-snapshot";
+    public static final String SEAT_REMAINING_CACHE = "seat-remaining";
 
-    // ── L1: Caffeine (match-snapshot 전용) ───────────────────────────────────
+    // ── L1: Caffeine ─────────────────────────────────────────────────────────
 
     /**
-     * Caffeine L1 캐시 매니저 ({@code match-snapshot} 전용).
+     * Caffeine L1 캐시 매니저.
      *
-     * <p>TTL 5분: Redis L2(60분) 보다 짧게 설정해 L1 만료 후 L2 에서 최신 값을 확인한다.
-     *
-     * <p>{@code seat-remaining} 은 {@link org.ticketing.match.application.service.SeatAvailabilityCacheService}
-     * 에서 Caffeine {@code LoadingCache} 로 직접 관리하므로 여기에 등록하지 않는다.
+     * <ul>
+     *   <li>{@code match-snapshot}: TTL 5분 — Redis L2(60분) 보다 짧게 설정해 L1 만료 후 L2 에서 최신 값을 확인.</li>
+     *   <li>{@code seat-remaining}: TTL 2초 — reservation-service 의 Redis DECR/INCR 이 원본.
+     *       {@code @Cacheable(sync=true)} 로 stampede 방지. Redis L2 미등록(원본이 Redis 이므로).</li>
+     * </ul>
      */
     @Bean("caffeineCacheManager")
     public CacheManager caffeineCacheManager() {
@@ -84,8 +87,17 @@ public class MatchCacheConfig implements CachingConfigurer {
                         .build()
         );
 
+        CaffeineCache seatRemainingCache = new CaffeineCache(
+                SEAT_REMAINING_CACHE,
+                Caffeine.newBuilder()
+                        .maximumSize(1_000)
+                        .expireAfterWrite(Duration.ofSeconds(2))
+                        .recordStats()
+                        .build()
+        );
+
         SimpleCacheManager manager = new SimpleCacheManager();
-        manager.setCaches(List.of(matchSnapshotCache));
+        manager.setCaches(List.of(matchSnapshotCache, seatRemainingCache));
         return manager;
     }
 
