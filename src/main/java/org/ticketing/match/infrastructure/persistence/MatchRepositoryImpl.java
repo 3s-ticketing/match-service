@@ -55,4 +55,9 @@ public class MatchRepositoryImpl implements MatchRepository {
     public Optional<Match> findActiveById(UUID id) {
         return jpaMatchRepository.findActiveById(id);
     }
+
+    @Override
+    public Optional<Match> findActiveByIdWithPolicies(UUID id) {
+        return jpaMatchRepository.findActiveByIdWithPolicies(id);
+    }
 }

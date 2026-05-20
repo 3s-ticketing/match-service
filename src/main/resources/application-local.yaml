@@ -29,6 +29,13 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 100
+          max-idle: 20
+          min-idle: 5
+          max-wait: 500ms
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

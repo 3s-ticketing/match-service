@@ -17,4 +17,10 @@ public interface MatchRepository {
     Optional<Match> findById(UUID id);
 
     Optional<Match> findActiveById(UUID id);
+
+    /**
+     * ZonePolicy 를 fetch join 으로 함께 조회한다.
+     * MatchSnapshotCacheService 가 캐시 미스 시에만 호출한다.
+     */
+    Optional<Match> findActiveByIdWithPolicies(UUID id);
 }

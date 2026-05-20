@@ -50,6 +50,7 @@ public class MatchWriteService {
     private final MatchRepository matchRepository;
     private final MatchEventPublisher matchEventPublisher;
     private final SeatAvailabilityRepository seatAvailabilityRepository;
+    private final MatchSnapshotCacheService matchSnapshotCacheService;
 
     // ──────────────────────────────────────────
     // Match 생성
@@ -66,6 +67,7 @@ public class MatchWriteService {
     public MatchResult update(UpdateMatchCommand command) {
         Match match = getActive(command.matchId());
         match.update(command.name(), command.matchDatetime(), command.ticketOpenAt());
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchResult.from(match);
     }
 
@@ -117,6 +119,20 @@ public class MatchWriteService {
                                 + "APPROVED 커밋은 완료됐으나 Redis 가 비어 있음. "
                                 + "수동 재초기화 또는 재승인 처리 필요.", matchId, e);
                     }
+                    // MatchSnapshot Cache Warm-up:
+                    // APPROVED 직후 첫 요청에서 Cache Stampede 가 발생하지 않도록
+                    // 커밋 후 즉시 캐시를 채운다.
+                    //
+                    // [중요] matchSnapshotCacheService 는 Spring 프록시 빈이므로
+                    // getSnapshot() 호출 시 @Cacheable AOP 가 정상 적용된다.
+                    // (warmUp() 같은 같은 클래스 내 self-invocation 이 아님)
+                    try {
+                        matchSnapshotCacheService.getSnapshot(matchId);
+                        log.info("[MatchWriteService] matchId={} MatchSnapshot 캐시 사전 적재 완료.", matchId);
+                    } catch (Exception e) {
+                        log.warn("[MatchWriteService] matchId={} MatchSnapshot 캐시 사전 적재 실패. "
+                                + "첫 요청에서 캐시 미스 발생 가능.", matchId, e);
+                    }
                 }
             });
         } else if (command.targetStatus() == MatchStatus.CANCELED) {
@@ -125,12 +141,14 @@ public class MatchWriteService {
             );
         }
 
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchResult.from(match);
     }
 
     public void delete(DeleteMatchCommand command) {
         Match match = getActive(command.matchId());
         match.delete(command.deletedBy());
+        matchSnapshotCacheService.evict(command.matchId());
     }
 
     // ──────────────────────────────────────────
@@ -141,18 +159,21 @@ public class MatchWriteService {
         Match match = getActive(command.matchId());
         MatchZonePolicy policy = match.addZonePolicy(command.seatGradeId(), command.price(), totalSeatCount);
         matchRepository.saveAndFlush(match);
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchZonePolicyResult.from(policy);
     }
 
     public MatchZonePolicyResult updateZonePolicy(UpdateMatchZonePolicyCommand command) {
         Match match = getActive(command.matchId());
         match.updateZonePolicy(command.policyId(), command.price());
+        matchSnapshotCacheService.evict(command.matchId());
         return MatchZonePolicyResult.from(match.findZonePolicy(command.policyId()));
     }
 
     public void removeZonePolicy(RemoveMatchZonePolicyCommand command) {
         Match match = getActive(command.matchId());
         match.removeZonePolicy(command.policyId(), command.deletedBy());
+        matchSnapshotCacheService.evict(command.matchId());
     }
 
     // ──────────────────────────────────────────
