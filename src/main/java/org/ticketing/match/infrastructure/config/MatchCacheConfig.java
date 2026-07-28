@@ -19,6 +19,9 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
@@ -56,6 +59,15 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
  * <ul>
  *   <li>Caffeine {@code computeIfAbsent} + {@code @Cacheable(sync=true)} 로 단일 로더 보장.</li>
  *   <li>단일 로더 내부에서 L2 를 먼저 확인하므로 DB 부하를 최소화한다.</li>
+ * </ul>
+ *
+ * <h3>크로스 인스턴스 L1 무효화 (match-snapshot)</h3>
+ * <ul>
+ *   <li>고가용성을 위해 수평 복제된 인스턴스마다 L1(Caffeine) 은 서로 격리되어 있다.</li>
+ *   <li>{@link org.ticketing.match.application.service.MatchSnapshotCacheService#evict} 는 자신의 L1·L2 를 evict 한 뒤,
+ *       {@link MatchCacheInvalidationPublisher} 로 matchId 를 Redis 채널에 발행한다.</li>
+ *   <li>다른 인스턴스의 {@link MatchCacheInvalidationListener} 가 이를 구독해 각자의 L1 을 함께 evict 한다.</li>
+ *   <li>발행/구독이 실패해도(Redis 장애 등) L1 TTL(5분)이 안전망 역할을 하므로 무제한 stale 상태로 남지 않는다.</li>
  * </ul>
  */
 @Slf4j
@@ -134,6 +146,57 @@ public class MatchCacheConfig implements CachingConfigurer {
                 .withCacheConfiguration(MATCH_SNAPSHOT_CACHE, config)
                 // seat-remaining 은 Redis 원본이므로 L2 캐시 미등록
                 .build();
+    }
+
+    // ── 크로스 인스턴스 L1 무효화: Redis Pub/Sub ──────────────────────────────
+
+    /**
+     * match-snapshot L1(Caffeine) 무효화 이벤트를 발행하는 퍼블리셔.
+     *
+     * <p>수평 복제된 인스턴스마다 L1 이 격리되어 있어, evict 가 자신의 L1 만 지우고 끝나면
+     * 다른 인스턴스는 최대 TTL(5분) 동안 stale 스냅샷을 반환할 수 있다.
+     * {@link org.ticketing.match.application.service.MatchSnapshotCacheService#evict} 에서
+     * 로컬 evict 이후 이 퍼블리셔로 matchId 를 발행해 다른 인스턴스에도 전파한다.
+     */
+    @Bean
+    public MatchCacheInvalidationPublisher matchCacheInvalidationPublisher(StringRedisTemplate redisTemplate) {
+        return new MatchCacheInvalidationPublisher(redisTemplate);
+    }
+
+    /**
+     * 다른 인스턴스가 발행한 무효화 이벤트를 구독해 자신의 L1(Caffeine) 을 evict 하는 리스너.
+     */
+    @Bean
+    public MatchCacheInvalidationListener matchCacheInvalidationListener(
+            @Qualifier("caffeineCacheManager") CacheManager caffeineCacheManager
+    ) {
+        return new MatchCacheInvalidationListener(caffeineCacheManager);
+    }
+
+    /**
+     * 무효화 이벤트가 오가는 Redis 채널.
+     */
+    @Bean
+    public ChannelTopic matchCacheInvalidationTopic() {
+        return new ChannelTopic(MatchCacheInvalidationPublisher.CHANNEL);
+    }
+
+    /**
+     * {@link MatchCacheInvalidationListener} 를 {@link #matchCacheInvalidationTopic()} 채널에 구독시키는 컨테이너.
+     *
+     * <p>다른 마이크로서비스(reservation-service 등)가 이미 동일한 Redis 를 Kafka 대체 용도가 아닌
+     * 캐시 인프라로 공유하고 있으므로, 별도의 메시지 브로커 없이 기존 Redis 연결로 Pub/Sub 을 구성한다.
+     */
+    @Bean
+    public RedisMessageListenerContainer redisMessageListenerContainer(
+            RedisConnectionFactory connectionFactory,
+            MatchCacheInvalidationListener matchCacheInvalidationListener,
+            ChannelTopic matchCacheInvalidationTopic
+    ) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(matchCacheInvalidationListener, matchCacheInvalidationTopic);
+        return container;
     }
 
     // ── Primary: TwoLevelCache(match-snapshot) + Caffeine(seat-remaining) ────

@@ -12,6 +12,7 @@ import org.ticketing.match.application.dto.result.MatchSnapshot;
 import org.ticketing.match.domain.exception.MatchNotFoundException;
 import org.ticketing.match.domain.model.Match;
 import org.ticketing.match.domain.repository.MatchRepository;
+import org.ticketing.match.infrastructure.config.MatchCacheInvalidationPublisher;
 
 import static org.ticketing.match.infrastructure.config.MatchCacheConfig.MATCH_SNAPSHOT_CACHE;
 
@@ -48,15 +49,18 @@ public class MatchSnapshotCacheService {
     private final MatchRepository matchRepository;
     private final CacheManager caffeineCacheManager;
     private final CacheManager redisCacheManager;
+    private final MatchCacheInvalidationPublisher invalidationPublisher;
 
     public MatchSnapshotCacheService(
             MatchRepository matchRepository,
             @Qualifier("caffeineCacheManager") CacheManager caffeineCacheManager,
-            @Qualifier("redisCacheManager") CacheManager redisCacheManager
+            @Qualifier("redisCacheManager") CacheManager redisCacheManager,
+            MatchCacheInvalidationPublisher invalidationPublisher
     ) {
         this.matchRepository = matchRepository;
         this.caffeineCacheManager = caffeineCacheManager;
         this.redisCacheManager = redisCacheManager;
+        this.invalidationPublisher = invalidationPublisher;
     }
 
     /**
@@ -77,7 +81,7 @@ public class MatchSnapshotCacheService {
     }
 
     /**
-     * L1(Caffeine) + L2(Redis) 양쪽 캐시 무효화.
+     * L1(Caffeine) + L2(Redis) 양쪽 캐시 무효화 + 다른 인스턴스로 무효화 전파.
      *
      * <p>각 캐시 매니저에 직접 evict 를 호출하여 L1·L2 를 명시적으로 무효화한다.
      * Primary {@link org.springframework.cache.CacheManager} 가
@@ -87,10 +91,16 @@ public class MatchSnapshotCacheService {
      * <p>Redis 장애 시 {@link org.ticketing.match.infrastructure.config.MatchCacheConfig}
      * 의 {@code CacheErrorHandler} 가 Redis evict 오류를 로깅 후 무시한다.
      * L1(Caffeine) 은 항상 삭제되므로 TTL(5분) 이내에 최신 데이터가 L1 에서 제공된다.
+     *
+     * <p><b>크로스 인스턴스 전파:</b> match-service 는 고가용성을 위해 여러 인스턴스로 수평 복제되며,
+     * L1(Caffeine) 은 인스턴스마다 격리된 JVM 로컬 캐시다. 자신의 L1·L2 를 evict 한 뒤
+     * {@link MatchCacheInvalidationPublisher} 로 matchId 를 Redis 채널에 발행해, 다른 인스턴스의
+     * 리스너가 각자의 L1 도 함께 evict 하도록 한다. 발행이 실패해도 L1 TTL(5분)이 안전망 역할을 한다.
      */
     public void evict(UUID matchId) {
         evictFromManager(caffeineCacheManager, matchId, "L1-Caffeine");
         evictFromManager(redisCacheManager, matchId, "L2-Redis");
+        invalidationPublisher.publishEvict(matchId);
     }
 
     private void evictFromManager(CacheManager manager, UUID matchId, String label) {
